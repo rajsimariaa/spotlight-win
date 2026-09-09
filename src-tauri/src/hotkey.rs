@@ -1,6 +1,6 @@
 use tauri::{AppHandle, Emitter};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    RegisterHotKey, UnregisterHotKey, HOT_KEY_MODIFIERS, MOD_CONTROL, MOD_NOREPEAT,
+    RegisterHotKey, UnregisterHotKey, HOT_KEY_MODIFIERS, MOD_ALT, MOD_NOREPEAT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GetMessageW, TranslateMessage, DispatchMessageW, MSG,
@@ -13,7 +13,7 @@ const VK_SPACE: u32 = 0x20;
 pub fn register_hotkey(app: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     std::thread::spawn(move || unsafe {
         let hwnd_none: Option<HWND> = None;
-        let flags = HOT_KEY_MODIFIERS(MOD_NOREPEAT.0 | MOD_CONTROL.0);
+        let flags = HOT_KEY_MODIFIERS(MOD_NOREPEAT.0 | MOD_ALT.0);
 
         if RegisterHotKey(hwnd_none, HOTKEY_ID, flags, VK_SPACE).is_err() {
             return;

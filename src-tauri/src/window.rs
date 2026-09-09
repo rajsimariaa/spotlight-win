@@ -4,8 +4,8 @@ pub fn apply_spotlight_styling(app: &tauri::AppHandle) -> Result<(), Box<dyn std
     let window = app.get_webview_window("main")
         .ok_or("Window 'main' not found")?;
 
-    // Dark acrylic with blur
-    window_vibrancy::apply_acrylic(&window, Some((18, 18, 20, 140)))?;
+    // PRD: rgba(24, 24, 27, 0.75) with 25px blur
+    window_vibrancy::apply_acrylic(&window, Some((24, 24, 27, 190)))?;
 
     #[cfg(target_os = "windows")]
     {
@@ -17,32 +17,32 @@ pub fn apply_spotlight_styling(app: &tauri::AppHandle) -> Result<(), Box<dyn std
         let h = HWND(hwnd.0 as *mut c_void);
 
         unsafe {
-            // DWMWA_WINDOW_CORNER_PREFERENCE (33) = DWMWCP_DONOTROUND (1)
-            let corner: u32 = 1;
+            // DWMWA_WINDOW_CORNER_PREFERENCE (33) = DWMWCP_ROUND (2) for 12px
+            let corner: u32 = 2;
             let _ = DwmSetWindowAttribute(h, DWMWINDOWATTRIBUTE(33),
                 &corner as *const _ as *const c_void, std::mem::size_of::<u32>() as u32);
 
-            // DWMWA_BORDER_COLOR (34) = DWMWA_CB_NONE — transparent border
-            let border_color: u32 = 0x00FFFFFF; // CLR_NONE
+            // DWMWA_BORDER_COLOR (34) = CLR_NONE
+            let border_color: u32 = 0x00FFFFFF;
             let _ = DwmSetWindowAttribute(h, DWMWINDOWATTRIBUTE(34),
                 &border_color as *const _ as *const c_void, std::mem::size_of::<u32>() as u32);
 
-            // DWMWA_CAPTION_COLOR (35) = dark to match bg
-            let caption: u32 = 0x00121214;
-            let _ = DwmSetWindowAttribute(h, DWMWINDOWATTRIBUTE(35),
-                &caption as *const _ as *const c_void, std::mem::size_of::<u32>() as u32);
-
-            // DWMWA_TEXT_COLOR (36) = white
-            let text_color: u32 = 0x00FFFFFF;
-            let _ = DwmSetWindowAttribute(h, DWMWINDOWATTRIBUTE(36),
-                &text_color as *const _ as *const c_void, std::mem::size_of::<u32>() as u32);
-
-            // DWMWA_USE_IMMERSIVE_DARK_MODE (20) = enabled
+            // DWMWA_USE_IMMERSIVE_DARK_MODE (20)
             let dark: u32 = 2;
             let _ = DwmSetWindowAttribute(h, DWMWINDOWATTRIBUTE(20),
                 &dark as *const _ as *const c_void, std::mem::size_of::<u32>() as u32);
         }
     }
+
+    // PRD: WM_KILLFOCUS auto-hide via window focus event
+    let app_clone = app.clone();
+    window.on_window_event(move |event| {
+        if let tauri::WindowEvent::Focused(focused) = event {
+            if !focused {
+                let _ = hide_window(&app_clone);
+            }
+        }
+    });
 
     Ok(())
 }

@@ -12,6 +12,14 @@ pub fn execute_action(action_id: String) -> Result<String, String> {
         open::that(path).map_err(|e| e.to_string())?;
         return Ok(format!("Opened: {}", path));
     }
+    if let Some(path) = action_id.strip_prefix("opendir:") {
+        let dir = std::path::Path::new(path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.to_string());
+        open::that(&dir).map_err(|e| e.to_string())?;
+        return Ok(format!("Opened directory: {}", dir));
+    }
     if let Some(query) = action_id.strip_prefix("web:") {
         let url = format!("https://www.google.com/search?q={}", urlencoding::encode(query));
         open::that(&url).map_err(|e| e.to_string())?;
@@ -28,7 +36,7 @@ pub fn toggle_window(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn resize_window(app: tauri::AppHandle, height: f64) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
-        let h = height.clamp(54.0, 440.0);
+        let h = height.clamp(52.0, 480.0);
         window.set_size(tauri::LogicalSize::new(750.0, h)).map_err(|e| e.to_string())?;
     }
     Ok(())
