@@ -1,159 +1,143 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import SearchInput from "./components/SearchInput";
-import ResultsList from "./components/ResultsList";
-import PreviewPanel from "./components/PreviewPanel";
 import { SearchResult, SearchResponse } from "./types";
+
+const SEARCH_H = 52;
+const ROW_H = 38;
+const LABEL_H = 22;
+const MAX_H = 400;
 
 export default function App() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [queryTime, setQueryTime] = useState(0);
-  const [selectedResult, setSelectedResult] = useState<SearchResult | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [sel, setSel] = useState(0);
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const unlistenShow = listen("spotlight-show", () => {
-      resetAndFocus();
+    const u1 = listen("spotlight-show", () => {
+      setQuery(""); setResults([]); setSel(0);
+      setTimeout(() => inputRef.current?.focus(), 20);
     });
-    const unlistenHide = listen("spotlight-hide", () => {
-      setQuery("");
-      setResults([]);
+    const u2 = listen("spotlight-hide", () => {
+      setQuery(""); setResults([]);
     });
-    return () => {
-      unlistenShow.then((fn) => fn());
-      unlistenHide.then((fn) => fn());
-    };
+    return () => { u1.then(f => f()); u2.then(f => f()); };
   }, []);
 
-  const resetAndFocus = useCallback(() => {
-    setQuery("");
-    setResults([]);
-    setSelectedIndex(0);
-    setQueryTime(0);
-    setSelectedResult(null);
-    // Resize to minimal
-    invoke("resize_window", { height: 60 }).catch(() => {});
-    setTimeout(() => inputRef.current?.focus(), 30);
-  }, []);
-
-  // Resize window dynamically
-  useEffect(() => {
-    const count = results.length;
+  const resize = useCallback((count: number) => {
     if (count === 0) {
-      const h = query.trim() !== "" ? 100 : 60;
-      invoke("resize_window", { height: h }).catch(() => {});
+      invoke("resize_window", { height: SEARCH_H });
     } else {
-      const h = Math.min(60 + count * 40 + 30, 420);
-      invoke("resize_window", { height: h }).catch(() => {});
+      const cats = new Set(results.map(r => r.category)).size;
+      const h = SEARCH_H + (count * ROW_H) + (cats * LABEL_H) + 8;
+      invoke("resize_window", { height: Math.min(h, MAX_H) });
     }
-  }, [results, query]);
+  }, [results]);
 
-  const handleSearch = useCallback((value: string) => {
-    setQuery(value);
-    setSelectedIndex(0);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(async () => {
-      if (value.trim() === "") {
-        setResults([]);
-        setQueryTime(0);
-        return;
-      }
+  useEffect(() => resize(results.length), [results, resize]);
+
+  const search = useCallback((q: string) => {
+    setQuery(q); setSel(0);
+    if (debounce.current) clearTimeout(debounce.current);
+    debounce.current = setTimeout(async () => {
+      if (!q.trim()) { setResults([]); return; }
       try {
-        const response: SearchResponse = await invoke("search_query", { query: value });
-        setResults(response.results);
-        setQueryTime(response.query_time_ms);
-      } catch (err) {
-        console.error("Search error:", err);
-        setResults([]);
-      }
-    }, 5);
+        const r: SearchResponse = await invoke("search_query", { query: q });
+        setResults(r.results);
+      } catch { setResults([]); }
+    }, 3);
   }, []);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      switch (e.key) {
-        case "ArrowDown":
-          e.preventDefault();
-          setSelectedIndex((prev) => Math.min(prev + 1, results.length - 1));
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          setSelectedIndex((prev) => Math.max(prev - 1, 0));
-          break;
-        case "Enter":
-          e.preventDefault();
-          if (results[selectedIndex]) handleSelectResult(results[selectedIndex]);
-          break;
-        case "Escape":
-          e.preventDefault();
-          invoke("toggle_window").catch(() => {});
-          break;
+  const onKey = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); setSel(s => Math.min(s + 1, results.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setSel(s => Math.max(s - 1, 0)); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      if (results[sel]) {
+        const r = results[sel];
+        const id = r.category === "Action" ? (r.metadata || "") : `open:${r.path}`;
+        invoke("execute_action", { actionId: id }).catch(() => {});
+        invoke("toggle_window").catch(() => {});
       }
-    },
-    [results, selectedIndex]
-  );
-
-  const handleSelectResult = async (result: SearchResult) => {
-    try {
-      if (result.category === "Action") {
-        await invoke("execute_action", { actionId: result.metadata || "" });
-      } else {
-        await invoke("execute_action", { actionId: `open:${result.path}` });
-      }
-      invoke("toggle_window").catch(() => {});
-    } catch (err) {
-      console.error("Execute error:", err);
     }
-  };
+    else if (e.key === "Escape") {
+      e.preventDefault();
+      invoke("toggle_window").catch(() => {});
+    }
+  }, [results, sel]);
 
-  const groupedResults = results.reduce<Record<string, SearchResult[]>>((acc, result) => {
-    if (!acc[result.category]) acc[result.category] = [];
-    acc[result.category].push(result);
-    return acc;
-  }, {});
-
-  useEffect(() => {
-    if (results[selectedIndex]) setSelectedResult(results[selectedIndex]);
-  }, [selectedIndex, results]);
+  const groups: Record<string, SearchResult[]> = {};
+  results.forEach(r => { (groups[r.category] ||= []).push(r); });
+  const order = ["Application", "Action", "Calculator", "Conversion", "Timezone", "File"];
 
   return (
-    <div className="spotlight-container flex flex-col">
-      <div className="border-b border-white/10">
-        <SearchInput
+    <div className="spotlight">
+      <div className="search-bar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="2" strokeLinecap="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input
           ref={inputRef}
           value={query}
-          onChange={handleSearch}
-          onKeyDown={handleKeyDown}
-          queryTime={queryTime}
-          resultCount={results.length}
+          onChange={e => search(e.target.value)}
+          onKeyDown={onKey}
+          placeholder="Spotlight Search"
+          autoFocus
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
         />
       </div>
 
       {results.length > 0 && (
-        <div className="flex overflow-hidden" style={{ maxHeight: 360 }}>
-          <div className="flex-1 overflow-hidden">
-            <ResultsList
-              groupedResults={groupedResults}
-              selectedIndex={selectedIndex}
-              onSelect={setSelectedIndex}
-              onExecute={handleSelectResult}
-              query={query}
-            />
+        <>
+          <div className="divider" />
+          <div className="results">
+            {order.map(cat => {
+              const items = groups[cat];
+              if (!items) return null;
+              return (
+                <div key={cat}>
+                  <div className="category-label">{cat}</div>
+                  {items.map(item => {
+                    const idx = results.indexOf(item);
+                    const isActive = idx === sel;
+                    return (
+                      <div
+                        key={item.id + idx}
+                        className={`result-row${isActive ? " active" : ""}`}
+                        onMouseEnter={() => setSel(idx)}
+                        onClick={() => {
+                          const id = item.category === "Action" ? (item.metadata || "") : `open:${item.path}`;
+                          invoke("execute_action", { actionId: id }).catch(() => {});
+                          invoke("toggle_window").catch(() => {});
+                        }}
+                      >
+                        <div className="result-icon" style={{ background: isActive ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.04)" }}>
+                          {cat === "Application" ? "📱" : cat === "Action" ? "⚡" : cat === "Calculator" ? "🧮" : cat === "File" ? "📄" : cat === "Conversion" ? "🔄" : "🕐"}
+                        </div>
+                        <span className="result-name">{item.name}</span>
+                        {item.path && item.path !== item.name && (
+                          <span className="result-path">{item.path}</span>
+                        )}
+                        {isActive && <span className="result-shortcut">↵</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
           </div>
-          {selectedResult && (
-            <PreviewPanel result={selectedResult} query={query} />
-          )}
-        </div>
+        </>
       )}
 
       {query.trim() !== "" && results.length === 0 && (
-        <div className="py-4 text-center text-text-muted text-sm">
-          No results found
-        </div>
+        <div className="divider" />
+      )}
+      {query.trim() !== "" && results.length === 0 && (
+        <div className="empty-state">No results for "{query}"</div>
       )}
     </div>
   );

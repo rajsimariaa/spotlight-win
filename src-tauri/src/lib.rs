@@ -7,6 +7,11 @@ use tauri::Listener;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Build app cache in background before Tauri starts
+    std::thread::spawn(|| {
+        search::init_cache();
+    });
+
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -16,7 +21,7 @@ pub fn run() {
             hotkey::register_hotkey(app.handle().clone())?;
 
             let app_handle = app.handle().clone();
-            app.listen("hotkey-toggle", move |_event| {
+            app.listen("hotkey-toggle", move |_| {
                 let _ = window::toggle_window_visibility(&app_handle);
             });
 
@@ -25,9 +30,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::search_query,
             commands::execute_action,
-            commands::get_applications,
-            commands::evaluate_expression,
-            commands::check_everything_status,
             commands::toggle_window,
             commands::resize_window,
         ])
