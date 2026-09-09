@@ -1,43 +1,33 @@
-name: Build & Release Spotlight Windows
+name: Build & Release
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  build-windows:
+  build:
     runs-on: windows-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
+      - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
 
-      - name: Install Frontend Dependencies
-        run: npm ci
+      - run: npm ci
 
-      - name: Build & Release with Tauri
-        uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Spotlight Windows ${{ github.ref_name }}'
-          releaseBody: 'See the assets for download links.'
-          releaseDraft: false
-          prerelease: false
-          includeUpdaterJson: false
