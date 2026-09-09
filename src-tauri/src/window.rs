@@ -7,7 +7,7 @@ pub fn apply_spotlight_styling(app: &tauri::AppHandle) -> Result<(), Box<dyn std
     // Apply native acrylic blur using the window-vibrancy crate
     window_vibrancy::apply_acrylic(&window, Some((18, 18, 18, 125)))?;
 
-    // Set rounded corners
+    // Disable DWM corner rounding — CSS handles the capsule shape
     #[cfg(target_os = "windows")]
     {
         use std::ffi::c_void;
@@ -17,7 +17,8 @@ pub fn apply_spotlight_styling(app: &tauri::AppHandle) -> Result<(), Box<dyn std
         let hwnd = window.hwnd()?;
         let hwnd_raw = hwnd.0 as *mut c_void;
         unsafe {
-            let preference: u32 = 3; // DWMWCP_ROUND
+            // DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_DONOTROUND = 1
+            let preference: u32 = 1;
             let _ = DwmSetWindowAttribute(
                 HWND(hwnd_raw as *mut _),
                 DWMWINDOWATTRIBUTE(33),
