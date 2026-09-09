@@ -200,3 +200,19 @@ body {
   color: rgba(255, 255, 255, 0.22);
   letter-spacing: 0.1px;
 }
+
+.web-search-footer {
+  display: flex;
+  align-items: center;
+  height: 42px;
+  padding: 0 14px;
+  gap: 10px;
+  cursor: pointer;
+  transition: background 60ms ease;
+  border-radius: 8px;
+  margin: 4px 8px 6px;
+}
+
+.web-search-footer:hover {
+  background: rgba(0, 102, 214, 0.25);
+}

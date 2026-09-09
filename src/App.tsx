@@ -20,15 +20,14 @@ const catDot: Record<string, string> = {
 
 const fileIcons: Record<string, string> = {
   pdf: "📕", doc: "📘", docx: "📘", xls: "📗", xlsx: "📗", ppt: "📙", pptx: "📙",
-  txt: "📝", csv: "📊", md: "📝", rtf: "📝",
-  jpg: "🖼️", jpeg: "🖼️", png: "🖼️", gif: "🖼️", svg: "🖼️", webp: "🖼️", bmp: "🖼️",
-  mp3: "🎵", wav: "🎵", flac: "🎵", aac: "🎵", ogg: "🎵", m4a: "🎵",
+  txt: "📝", csv: "📊", md: "📝",
+  jpg: "🖼️", jpeg: "🖼️", png: "🖼️", gif: "🖼️", svg: "🖼️", webp: "🖼️",
+  mp3: "🎵", wav: "🎵", flac: "🎵", aac: "🎵", m4a: "🎵",
   mp4: "🎬", mkv: "🎬", avi: "🎬", mov: "🎬", wmv: "🎬", webm: "🎬",
   js: "💛", ts: "💙", tsx: "💙", jsx: "💛", py: "🐍", rs: "🦀", go: "🔷",
   java: "☕", c: "⚙️", cpp: "⚙️", cs: "🟣", html: "🌐", css: "🎨",
   json: "📋", xml: "📋", yaml: "📋", yml: "📋", toml: "📋",
-  zip: "📦", rar: "📦", "7z": "📦", tar: "📦", gz: "📦",
-  iso: "💿", img: "💿", exe: "📱", dll: "⚙️", ini: "⚙️", cfg: "⚙️", log: "📋",
+  zip: "📦", rar: "📦", "7z": "📦",
 };
 
 function getFileIcon(metadata: string | null): string {
@@ -70,17 +69,18 @@ export default function App() {
     if (row) row.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, []);
 
-  const resize = useCallback((count: number) => {
-    if (count === 0) {
+  const resize = useCallback((count: number, hasWeb: boolean) => {
+    if (count === 0 && !hasWeb) {
       invoke("resize_window", { height: SEARCH_H });
     } else {
       const cats = new Set(results.map(r => r.category)).size;
-      const h = SEARCH_H + (count * ROW_H) + (cats * LABEL_H) + 12;
+      const webH = hasWeb ? 38 : 0;
+      const h = SEARCH_H + (count * ROW_H) + (cats * LABEL_H) + webH + 12;
       invoke("resize_window", { height: Math.min(h, MAX_H) });
     }
   }, [results]);
 
-  useEffect(() => resize(results.length), [results, resize]);
+  useEffect(() => resize(results.length, results.length === 0 && query.trim().length > 0), [results, query, resize]);
   useEffect(() => { scrollToSel(sel); }, [sel, scrollToSel]);
 
   const search = useCallback((q: string) => {
@@ -95,9 +95,15 @@ export default function App() {
     }, 3);
   }, []);
 
+  const openWebSearch = useCallback((q: string) => {
+    if (!q.trim()) return;
+    const url = `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+    invoke("execute_action", { actionId: `web:${q}` }).catch(() => {});
+    invoke("toggle_window").catch(() => {});
+  }, []);
+
   const executeItem = useCallback((item: SearchResult) => {
     const id = item.category === "Action" ? (item.metadata || "") :
-               item.category === "WebSearch" ? (item.metadata || "") :
                `open:${item.path}`;
     invoke("execute_action", { actionId: id }).catch(() => {});
     invoke("toggle_window").catch(() => {});
@@ -105,6 +111,8 @@ export default function App() {
 
   const onKey = useCallback((e: React.KeyboardEvent) => {
     const len = results.length;
+    const noResults = len === 0;
+
     if (e.key === "ArrowDown") {
       e.preventDefault();
       if (len > 0) {
@@ -119,16 +127,22 @@ export default function App() {
       }
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (results[selRef.current]) executeItem(results[selRef.current]);
+      if (noResults) {
+        // No local results — open web search
+        openWebSearch(query);
+      } else if (results[selRef.current]) {
+        executeItem(results[selRef.current]);
+      }
     } else if (e.key === "Escape") {
       e.preventDefault();
       invoke("toggle_window").catch(() => {});
     }
-  }, [results, executeItem]);
+  }, [results, query, executeItem, openWebSearch]);
 
   const groups: Record<string, SearchResult[]> = {};
   results.forEach(r => { (groups[r.category] ||= []).push(r); });
-  const order = ["Application", "Action", "Calculator", "Conversion", "Timezone", "File", "WebSearch"];
+  const order = ["Application", "Action", "Calculator", "Conversion", "Timezone", "File"];
+  const showWeb = results.length === 0 && query.trim().length > 0;
 
   return (
     <div className="spotlight">
@@ -179,17 +193,10 @@ export default function App() {
                         onMouseEnter={() => { selRef.current = idx; setSel(idx); }}
                         onClick={() => executeItem(item)}
                       >
-                        <div className="result-icon">
-                          {icon}
-                        </div>
+                        <div className="result-icon">{icon}</div>
                         <div className="result-info">
                           <span className="result-name">{item.name}</span>
-                          {shortPath && (
-                            <span className="result-meta">{shortPath}</span>
-                          )}
-                          {!shortPath && item.category === "WebSearch" && (
-                            <span className="result-meta">Press Enter to search the web</span>
-                          )}
+                          {shortPath && <span className="result-meta">{shortPath}</span>}
                         </div>
                         <div className="result-right">
                           {isActive && <span className="result-shortcut">↵</span>}
@@ -204,11 +211,27 @@ export default function App() {
         </>
       )}
 
+      {showWeb && (
+        <>
+          <div className="divider" />
+          <div className="web-search-footer" onClick={() => openWebSearch(query)}>
+            <div className="result-icon">🌐</div>
+            <div className="result-info">
+              <span className="result-name">Search &quot;{query}&quot; on the web</span>
+              <span className="result-meta">Press Enter to open in browser</span>
+            </div>
+            <div className="result-right">
+              <span className="result-shortcut">↵</span>
+            </div>
+          </div>
+        </>
+      )}
+
       {query.trim() !== "" && results.length === 0 && (
         <div className="divider" />
       )}
       {query.trim() !== "" && results.length === 0 && (
-        <div className="empty-state">No results for &quot;{query}&quot;</div>
+        <div className="empty-state">No results for &quot;{query}&quot; — press Enter to search the web</div>
       )}
     </div>
   );
