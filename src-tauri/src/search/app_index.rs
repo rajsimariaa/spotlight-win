@@ -95,12 +95,14 @@ fn scan_uwp_apps() -> Vec<AppEntry> {
 
     #[cfg(target_os = "windows")]
     {
-        // Use PowerShell to enumerate UWP apps from AppsFolder
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
         if let Ok(output) = std::process::Command::new("powershell")
             .args([
-                "-NoProfile", "-Command",
+                "-NoProfile", "-WindowStyle", "Hidden", "-Command",
                 "Get-StartApps | Select-Object Name, AppID | ConvertTo-Json"
             ])
+            .creation_flags(CREATE_NO_WINDOW)
             .output()
         {
             if let Ok(json_str) = String::from_utf8(output.stdout) {
