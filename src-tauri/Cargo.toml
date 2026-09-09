@@ -39,6 +39,7 @@ chrono-tz = "0.10"
 dirs = "6"
 open = "5"
 regex-lite = "0.1"
+urlencoding = "2"
 ureq = { version = "3", features = ["json"] }
 window-vibrancy = "0.6"
 

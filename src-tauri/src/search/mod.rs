@@ -25,6 +25,7 @@ pub enum SearchResultCategory {
     Action,
     Conversion,
     Timezone,
+    WebSearch,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,7 +35,6 @@ pub struct SearchResponse {
     pub total_results: usize,
 }
 
-// Global cached app list — built once at startup
 static CACHED_APPS: OnceLock<Vec<app_index::AppEntry>> = OnceLock::new();
 
 pub fn init_cache() {
@@ -50,20 +50,29 @@ pub fn search(query: &str) -> SearchResponse {
         return SearchResponse { results, query_time_ms: 0, total_results: 0 };
     }
 
-    // Apps — instant from cache
     if let Some(apps) = CACHED_APPS.get() {
         results.extend(app_index::search_applications(query, apps));
     }
 
-    // Calculator
     if let Some(r) = evaluator::evaluate_expression(query) {
         results.push(r);
     }
 
-    // Quick actions
     results.extend(quick_actions::search_actions(query));
 
     results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Always add web search option at the end
+    let q = query.trim().to_string();
+    results.push(SearchResult {
+        id: format!("web:{}", q),
+        name: format!("Search \"{}\" on the web", q),
+        path: format!("https://www.google.com/search?q={}", urlencoding::encode(&q)),
+        category: SearchResultCategory::WebSearch,
+        icon: None,
+        score: -1.0,
+        metadata: Some(format!("web:{}", q)),
+    });
 
     let ms = start.elapsed().as_micros() as u64;
     let total = results.len();

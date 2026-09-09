@@ -87,7 +87,7 @@ export default function App() {
 
   const groups: Record<string, SearchResult[]> = {};
   results.forEach(r => { (groups[r.category] ||= []).push(r); });
-  const order = ["Application", "Action", "Calculator", "Conversion", "Timezone", "File"];
+  const order = ["Application", "Action", "Calculator", "Conversion", "Timezone", "File", "WebSearch"];
 
   return (
     <div className="spotlight">
@@ -134,7 +134,7 @@ export default function App() {
                         }}
                       >
                         <div className="result-icon" style={{ background: isActive ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.04)" }}>
-                          {cat === "Application" ? "📱" : cat === "Action" ? "⚡" : cat === "Calculator" ? "🧮" : cat === "File" ? "📄" : cat === "Conversion" ? "🔄" : "🕐"}
+                          {cat === "Application" ? "📱" : cat === "Action" ? "⚡" : cat === "Calculator" ? "🧮" : cat === "File" ? "📄" : cat === "Conversion" ? "🔄" : cat === "WebSearch" ? "🌐" : "🕐"}
                         </div>
                         <span className="result-name">{item.name}</span>
                         {item.path && item.path !== item.name && (
