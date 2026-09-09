@@ -14,17 +14,11 @@ export type SearchResultCategory =
   | "Calculator"
   | "Action"
   | "Conversion"
-  | "Timezone";
+  | "Timezone"
+  | "WebSearch";
 
 export interface SearchResponse {
   results: SearchResult[];
   query_time_ms: number;
   total_results: number;
-}
-
-export interface AppEntry {
-  name: string;
-  path: string;
-  icon_path: string | null;
-  app_type: "StartMenuShortcut" | "UwpApp" | "SystemBinary";
 }

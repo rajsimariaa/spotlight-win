@@ -17,32 +17,65 @@ pub enum AppType {
 
 pub fn build_app_cache() -> Vec<AppEntry> {
     let mut apps = Vec::new();
-    let mut seen = HashMap::new();
+    let mut seen: HashMap<String, bool> = HashMap::new();
 
-    // Scan Start Menu
-    let start_menu_dirs = vec![
+    // 1. Scan Start Menu
+    let sm_dirs = vec![
         dirs::data_dir().map(|p| p.join(r"Microsoft\Windows\Start Menu\Programs")),
         Some(std::path::PathBuf::from(r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs")),
     ];
-    for dir in start_menu_dirs.into_iter().flatten() {
+    for dir in sm_dirs.into_iter().flatten() {
         if dir.exists() {
             scan_shortcuts(&dir, &mut apps, &mut seen, 0);
         }
     }
 
-    // Scan ALL drives A-Z with deep recursion
+    // 2. Scan all drives A-Z in parallel
+    let mut handles = vec![];
     for letter in b'A'..=b'Z' {
         let drive = format!("{}:\\", letter as char);
-        let drive_path = std::path::Path::new(&drive);
-        if drive_path.exists() {
-            scan_recursive(drive_path, &mut apps, &mut seen, 0, 10);
+        let drive_path = std::path::PathBuf::from(&drive);
+        if !drive_path.exists() { continue; }
+        let sm_count = apps.len();
+        handles.push(std::thread::spawn(move || {
+            let mut local_apps = Vec::new();
+            let mut local_seen = HashMap::new();
+            scan_dir(&drive_path, &mut local_apps, &mut local_seen, 0, 8);
+            local_apps
+        }));
+    }
+
+    for h in handles {
+        if let Ok(local) = h.join() {
+            for app in local {
+                let key = app.name.to_lowercase();
+                if !seen.contains_key(&key) {
+                    seen.insert(key, true);
+                    apps.push(app);
+                }
+            }
+        }
+    }
+
+    // 3. Scan PATH env dirs
+    if let Ok(path_var) = std::env::var("PATH") {
+        for dir in path_var.split(';') {
+            let p = std::path::Path::new(dir.trim());
+            if p.exists() && p.is_dir() {
+                scan_dir(p, &mut apps, &mut seen, 0, 2);
+            }
         }
     }
 
     apps
 }
 
-fn scan_recursive(
+const SKIP_DIRS: &[&str] = &[
+    "$recycle.bin", "system volume information", "recovery", "perflogs",
+    "msocache", "onedrive", "windows.old",
+];
+
+fn scan_dir(
     dir: &std::path::Path,
     apps: &mut Vec<AppEntry>,
     seen: &mut HashMap<String, bool>,
@@ -56,18 +89,20 @@ fn scan_recursive(
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        let name_lower = match path.file_stem().and_then(|s| s.to_str()) {
-            Some(s) => s.to_lowercase(),
-            None => continue,
-        };
-        if name_lower.is_empty() || seen.contains_key(&name_lower) { continue; }
+        let is_dir = path.is_dir();
+        let name_lower = path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
 
-        if path.is_dir() {
-            // Only skip truly irrelevant dirs
-            let skip = ["$recycle.bin", "system volume information", "recovery", "perflogs"];
-            if skip.contains(&name_lower.as_str()) { continue; }
-            scan_recursive(&path, apps, seen, depth + 1, max_depth);
-        } else if path.extension().map_or(false, |e| e == "exe") {
+        if name_lower.is_empty() || seen.contains_key(&name_lower) {
+            continue;
+        }
+
+        if is_dir {
+            if SKIP_DIRS.contains(&name_lower.as_str()) { continue; }
+            scan_dir(&path, apps, seen, depth + 1, max_depth);
+        } else if path.extension().map_or(false, |e| e == "exe" || e == "lnk") {
             seen.insert(name_lower, true);
             apps.push(AppEntry {
                 name: path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string(),
@@ -78,8 +113,13 @@ fn scan_recursive(
     }
 }
 
-fn scan_shortcuts(dir: &std::path::Path, apps: &mut Vec<AppEntry>, seen: &mut HashMap<String, bool>, depth: u32) {
-    if depth > 5 { return; }
+fn scan_shortcuts(
+    dir: &std::path::Path,
+    apps: &mut Vec<AppEntry>,
+    seen: &mut HashMap<String, bool>,
+    depth: u32,
+) {
+    if depth > 6 { return; }
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -105,21 +145,23 @@ fn scan_shortcuts(dir: &std::path::Path, apps: &mut Vec<AppEntry>, seen: &mut Ha
 
 pub fn search_applications(query: &str, apps: &[AppEntry]) -> Vec<SearchResult> {
     let query_lower = query.to_lowercase();
-    apps.iter().filter_map(|app| {
-        let name_lower = app.name.to_lowercase();
-        let score = super::fuzzy::calculate_fuzzy_score(&query_lower, &name_lower);
-        if score > 0.0 {
-            Some(SearchResult {
-                id: app.path.clone(),
-                name: app.name.clone(),
-                path: app.path.clone(),
-                category: SearchResultCategory::Application,
-                icon: None,
-                score,
-                metadata: None,
-            })
-        } else {
-            None
+    let mut scored: Vec<(f64, &AppEntry)> = apps.iter()
+        .filter_map(|app| {
+            let name_lower = app.name.to_lowercase();
+            let score = super::fuzzy::calculate_fuzzy_score(&query_lower, &name_lower);
+            if score > 0.0 { Some((score, app)) } else { None }
+        })
+        .collect();
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    scored.into_iter().take(20).map(|(score, app)| {
+        SearchResult {
+            id: app.path.clone(),
+            name: app.name.clone(),
+            path: app.path.clone(),
+            category: SearchResultCategory::Application,
+            icon: None,
+            score,
+            metadata: None,
         }
     }).collect()
 }

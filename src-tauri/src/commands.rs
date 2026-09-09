@@ -28,7 +28,7 @@ pub fn toggle_window(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn resize_window(app: tauri::AppHandle, height: f64) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
-        let h = height.clamp(56.0, 400.0);
+        let h = height.clamp(54.0, 440.0);
         window.set_size(tauri::LogicalSize::new(750.0, h)).map_err(|e| e.to_string())?;
     }
     Ok(())
