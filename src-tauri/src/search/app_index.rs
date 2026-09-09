@@ -12,7 +12,7 @@ pub struct AppEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AppType {
     StartMenu,
-    Path,
+    Drive,
 }
 
 pub fn build_app_cache() -> Vec<AppEntry> {
@@ -31,35 +31,47 @@ pub fn build_app_cache() -> Vec<AppEntry> {
         }
     }
 
-    // Scan PATH directories
-    if let Ok(path_var) = std::env::var("PATH") {
-        for dir in path_var.split(';') {
-            let path = std::path::Path::new(dir.trim());
-            if path.exists() && path.is_dir() {
-                if let Ok(entries) = std::fs::read_dir(path) {
-                    for entry in entries.flatten() {
-                        let p = entry.path();
-                        if p.extension().map_or(false, |e| e == "exe") {
-                            let name = p.file_stem()
-                                .and_then(|s| s.to_str())
-                                .unwrap_or("")
-                                .to_string();
-                            if !name.is_empty() && !seen.contains_key(&name.to_lowercase()) {
-                                seen.insert(name.to_lowercase(), true);
-                                apps.push(AppEntry {
-                                    name,
-                                    path: p.to_string_lossy().to_string(),
-                                    app_type: AppType::Path,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
+    // Scan all drives A-Z for .exe files
+    for letter in b'A'..=b'Z' {
+        let drive = format!("{}:\\", letter as char);
+        let drive_path = std::path::Path::new(&drive);
+        if drive_path.exists() {
+            scan_drive(drive_path, &mut apps, &mut seen, 0);
         }
     }
 
     apps
+}
+
+fn scan_drive(dir: &std::path::Path, apps: &mut Vec<AppEntry>, seen: &mut HashMap<String, bool>, depth: u32) {
+    if depth > 4 { return; }
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name_lower = path.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+
+            if name_lower.is_empty() || seen.contains_key(&name_lower) {
+                continue;
+            }
+
+            if path.is_dir() {
+                // Skip known slow/system directories
+                let skip = ["windows", "program files", "program files (x86)", "$recycle.bin", "system volume information", "recovery", "perflogs", "msocache", "intel", "amd", "nvidia"];
+                if skip.contains(&name_lower.as_str()) { continue; }
+                scan_drive(&path, apps, seen, depth + 1);
+            } else if path.extension().map_or(false, |e| e == "exe") {
+                seen.insert(name_lower, true);
+                apps.push(AppEntry {
+                    name: path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string(),
+                    path: path.to_string_lossy().to_string(),
+                    app_type: AppType::Drive,
+                });
+            }
+        }
+    }
 }
 
 fn scan_shortcuts(dir: &std::path::Path, apps: &mut Vec<AppEntry>, seen: &mut HashMap<String, bool>, depth: u32) {

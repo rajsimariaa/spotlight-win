@@ -14,16 +14,25 @@ export default function App() {
   const [sel, setSel] = useState(0);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const selRef = useRef(0);
 
   useEffect(() => {
     const u1 = listen("spotlight-show", () => {
-      setQuery(""); setResults([]); setSel(0);
+      setQuery(""); setResults([]); setSel(0); selRef.current = 0;
       setTimeout(() => inputRef.current?.focus(), 20);
     });
     const u2 = listen("spotlight-hide", () => {
-      setQuery(""); setResults([]);
+      setQuery(""); setResults([]); selRef.current = 0;
     });
     return () => { u1.then(f => f()); u2.then(f => f()); };
+  }, []);
+
+  const scrollToSel = useCallback((idx: number) => {
+    const container = resultsRef.current;
+    if (!container) return;
+    const row = container.querySelector(`[data-idx="${idx}"]`);
+    if (row) row.scrollIntoView({ block: "nearest" });
   }, []);
 
   const resize = useCallback((count: number) => {
@@ -38,8 +47,10 @@ export default function App() {
 
   useEffect(() => resize(results.length), [results, resize]);
 
+  useEffect(() => { scrollToSel(sel); }, [sel, scrollToSel]);
+
   const search = useCallback((q: string) => {
-    setQuery(q); setSel(0);
+    setQuery(q); setSel(0); selRef.current = 0;
     if (debounce.current) clearTimeout(debounce.current);
     debounce.current = setTimeout(async () => {
       if (!q.trim()) { setResults([]); return; }
@@ -51,22 +62,28 @@ export default function App() {
   }, []);
 
   const onKey = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === "ArrowDown") { e.preventDefault(); setSel(s => Math.min(s + 1, results.length - 1)); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setSel(s => Math.max(s - 1, 0)); }
-    else if (e.key === "Enter") {
+    const len = results.length;
+    if (e.key === "ArrowDown") {
       e.preventDefault();
-      if (results[sel]) {
-        const r = results[sel];
+      const next = selRef.current + 1;
+      if (next < len) { selRef.current = next; setSel(next); }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const prev = selRef.current - 1;
+      if (prev >= 0) { selRef.current = prev; setSel(prev); }
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (results[selRef.current]) {
+        const r = results[selRef.current];
         const id = r.category === "Action" ? (r.metadata || "") : `open:${r.path}`;
         invoke("execute_action", { actionId: id }).catch(() => {});
         invoke("toggle_window").catch(() => {});
       }
-    }
-    else if (e.key === "Escape") {
+    } else if (e.key === "Escape") {
       e.preventDefault();
       invoke("toggle_window").catch(() => {});
     }
-  }, [results, sel]);
+  }, [results]);
 
   const groups: Record<string, SearchResult[]> = {};
   results.forEach(r => { (groups[r.category] ||= []).push(r); });
@@ -94,7 +111,7 @@ export default function App() {
       {results.length > 0 && (
         <>
           <div className="divider" />
-          <div className="results">
+          <div className="results" ref={resultsRef}>
             {order.map(cat => {
               const items = groups[cat];
               if (!items) return null;
@@ -107,8 +124,9 @@ export default function App() {
                     return (
                       <div
                         key={item.id + idx}
+                        data-idx={idx}
                         className={`result-row${isActive ? " active" : ""}`}
-                        onMouseEnter={() => setSel(idx)}
+                        onMouseEnter={() => { selRef.current = idx; setSel(idx); }}
                         onClick={() => {
                           const id = item.category === "Action" ? (item.metadata || "") : `open:${item.path}`;
                           invoke("execute_action", { actionId: id }).catch(() => {});
@@ -137,7 +155,7 @@ export default function App() {
         <div className="divider" />
       )}
       {query.trim() !== "" && results.length === 0 && (
-        <div className="empty-state">No results for "{query}"</div>
+        <div className="empty-state">No results for &quot;{query}&quot;</div>
       )}
     </div>
   );
