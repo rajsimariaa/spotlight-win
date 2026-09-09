@@ -205,17 +205,19 @@ pub fn search(query: &str) -> SearchResponse {
         b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal)
     });
 
-    // Always add web search option at the end
-    let q = query.trim().to_string();
-    results.push(SearchResult {
-        id: format!("web:{}", q),
-        name: format!("Search \"{}\" on the web", q),
-        path: format!("https://www.google.com/search?q={}", urlencoding::encode(&q)),
-        category: SearchResultCategory::WebSearch,
-        icon: None,
-        score: -1.0,
-        metadata: Some(format!("web:{}", q)),
-    });
+    // Only add web search when no local results found
+    if results.is_empty() {
+        let q = query.trim().to_string();
+        results.push(SearchResult {
+            id: format!("web:{}", q),
+            name: format!("Search \"{}\" on the web", q),
+            path: format!("https://www.google.com/search?q={}", urlencoding::encode(&q)),
+            category: SearchResultCategory::WebSearch,
+            icon: None,
+            score: -1.0,
+            metadata: Some(format!("web:{}", q)),
+        });
+    }
 
     let ms = start.elapsed().as_micros() as u64;
     let total = results.len();
