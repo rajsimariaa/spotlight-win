@@ -1,0 +1,70 @@
+name: Build & Release Spotlight Windows
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Build & Package Tauri App with Updater Manifest
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+        with:
+          includeUpdaterJson: true
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Spotlight Windows ${{ github.ref_name }}'
+
+      - name: Generate Inno Setup Installer
+        uses: LagDaemon/InnoSetup-Action@v1
+        with:
+          filepath: 'installer.iss'
+
+      - name: Calculate SHA-256 Checksum
+        run: |
+          $files = Get-ChildItem -Path "src-tauri/target/release/bundle/msi/*.msi" -ErrorAction SilentlyContinue
+          if ($files) {
+            foreach ($file in $files) {
+              $hash = Get-FileHash -Path $file.FullName -Algorithm SHA256
+              "$($hash.Hash)  $($file.Name)" | Out-File -FilePath "checksums.txt" -Append
+            }
+          }
+          $exeFiles = Get-ChildItem -Path "Output/*.exe" -ErrorAction SilentlyContinue
+          if ($exeFiles) {
+            foreach ($file in $exeFiles) {
+              $hash = Get-FileHash -Path $file.FullName -Algorithm SHA256
+              "$($hash.Hash)  $($file.Name)" | Out-File -FilePath "checksums.txt" -Append
+            }
+          }
+
+      - name: Attach Installer to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            Output/*.exe
+            checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

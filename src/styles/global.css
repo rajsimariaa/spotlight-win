@@ -1,0 +1,137 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Segoe UI Variable Text", -apple-system, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #f8fafc;
+  background-color: transparent;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+/* Spotlight Window Container */
+.spotlight-container {
+  width: 750px;
+  background: rgba(24, 24, 27, 0.85);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+/* Search Input */
+.spotlight-input {
+  width: 100%;
+  height: 50px;
+  padding: 0 16px;
+  font-size: 17pt;
+  letter-spacing: 0.2px;
+  color: #f8fafc;
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+.spotlight-input::placeholder {
+  color: #64748b;
+}
+
+/* Results Container */
+.spotlight-results {
+  max-height: 380px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.spotlight-results::-webkit-scrollbar {
+  width: 6px;
+}
+
+.spotlight-results::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.spotlight-results::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+/* Result Item */
+.result-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background-color 80ms ease;
+}
+
+.result-item:hover,
+.result-item.active {
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.result-item.active {
+  background: #007aff;
+}
+
+/* Category Header */
+.category-header {
+  padding: 6px 14px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+}
+
+/* Preview Panel */
+.preview-panel {
+  width: 280px;
+  min-height: 200px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 14px;
+  overflow-y: auto;
+}
+
+/* Icon styling */
+.result-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+/* Focus ring */
+:focus-visible {
+  outline: 2px solid #007aff;
+  outline-offset: 2px;
+}
