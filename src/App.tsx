@@ -18,6 +18,31 @@ const catDot: Record<string, string> = {
   File: "file", WebSearch: "web", Conversion: "conv", Timezone: "tz",
 };
 
+const fileIcons: Record<string, string> = {
+  pdf: "📕", doc: "📘", docx: "📘", xls: "📗", xlsx: "📗", ppt: "📙", pptx: "📙",
+  txt: "📝", csv: "📊", md: "📝", rtf: "📝",
+  jpg: "🖼️", jpeg: "🖼️", png: "🖼️", gif: "🖼️", svg: "🖼️", webp: "🖼️", bmp: "🖼️",
+  mp3: "🎵", wav: "🎵", flac: "🎵", aac: "🎵", ogg: "🎵", m4a: "🎵",
+  mp4: "🎬", mkv: "🎬", avi: "🎬", mov: "🎬", wmv: "🎬", webm: "🎬",
+  js: "💛", ts: "💙", tsx: "💙", jsx: "💛", py: "🐍", rs: "🦀", go: "🔷",
+  java: "☕", c: "⚙️", cpp: "⚙️", cs: "🟣", html: "🌐", css: "🎨",
+  json: "📋", xml: "📋", yaml: "📋", yml: "📋", toml: "📋",
+  zip: "📦", rar: "📦", "7z": "📦", tar: "📦", gz: "📦",
+  iso: "💿", img: "💿", exe: "📱", dll: "⚙️", ini: "⚙️", cfg: "⚙️", log: "📋",
+};
+
+function getFileIcon(metadata: string | null): string {
+  if (!metadata) return "📄";
+  const ext = metadata.replace("file:", "");
+  return fileIcons[ext] || "📄";
+}
+
+function getShortPath(fullPath: string): string {
+  const parts = fullPath.replace(/\\/g, "/").split("/");
+  if (parts.length <= 2) return fullPath;
+  return parts.slice(-2).join("/");
+}
+
 export default function App() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -140,9 +165,12 @@ export default function App() {
                   {items.map(item => {
                     const idx = results.indexOf(item);
                     const isActive = idx === sel;
-                    const shortPath = item.path && item.path !== item.name
-                      ? item.path.replace(/\\/g, "/").split("/").slice(-2).join("/")
-                      : "";
+                    const icon = cat === "File" ? getFileIcon(item.metadata) : (catIcon[cat] || "📁");
+                    const shortPath = cat === "File"
+                      ? getShortPath(item.path)
+                      : (item.path && item.path !== item.name
+                          ? item.path.replace(/\\/g, "/").split("/").slice(-2).join("/")
+                          : "");
                     return (
                       <div
                         key={`${item.id}-${idx}`}
@@ -152,7 +180,7 @@ export default function App() {
                         onClick={() => executeItem(item)}
                       >
                         <div className="result-icon">
-                          {catIcon[cat] || "📁"}
+                          {icon}
                         </div>
                         <div className="result-info">
                           <span className="result-name">{item.name}</span>
