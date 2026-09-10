@@ -1,4 +1,5 @@
 use super::{SearchResult, SearchResultCategory};
+use windows::core::PCSTR;
 
 #[derive(Debug, Clone)]
 pub struct QuickAction {
@@ -9,6 +10,10 @@ pub struct QuickAction {
 }
 
 pub fn get_all_actions() -> Vec<QuickAction> {
+    let startup_enabled = is_startup_enabled();
+    let startup_label = if startup_enabled { "Disable" } else { "Enable" };
+    let startup_desc = if startup_enabled { "Remove from startup" } else { "Run on Windows startup" };
+
     vec![
         QuickAction { id: "sleep".into(), name: "Sleep".into(), description: "Put computer to sleep".into(), icon: "moon".into() },
         QuickAction { id: "lock".into(), name: "Lock".into(), description: "Lock your computer".into(), icon: "lock".into() },
@@ -19,7 +24,93 @@ pub fn get_all_actions() -> Vec<QuickAction> {
         QuickAction { id: "volume_up".into(), name: "Volume Up".into(), description: "Increase system volume".into(), icon: "volume-2".into() },
         QuickAction { id: "volume_down".into(), name: "Volume Down".into(), description: "Decrease system volume".into(), icon: "volume-1".into() },
         QuickAction { id: "volume_mute".into(), name: "Mute".into(), description: "Toggle mute".into(), icon: "volume-x".into() },
+        QuickAction { id: "toggle_startup".into(), name: format!("{} Startup", startup_label), description: startup_desc.into(), icon: "rocket".into() },
     ]
+}
+
+fn pcstr(s: &str) -> PCSTR {
+    PCSTR::from_raw(s.as_ptr() as *const u8)
+}
+
+pub fn is_startup_enabled() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::System::Registry::*;
+
+        unsafe {
+            let mut hkey = HKEY::default();
+            let result = RegOpenKeyExA(
+                HKEY_CURRENT_USER,
+                pcstr("Software\\Microsoft\\Windows\\CurrentVersion\\Run"),
+                Some(0),
+                KEY_READ,
+                &mut hkey,
+            );
+            if result.is_ok() {
+                let mut buf_len: u32 = 256;
+                let mut buf = [0u8; 256];
+                let mut reg_type = REG_SZ;
+                let result = RegQueryValueExA(
+                    hkey,
+                    pcstr("SpotlightWindows"),
+                    None,
+                    Some(&mut reg_type),
+                    Some(buf.as_mut_ptr()),
+                    Some(&mut buf_len),
+                );
+                let _ = RegCloseKey(hkey);
+                return result.is_ok() && buf_len > 0;
+            }
+        }
+    }
+    false
+}
+
+pub fn set_startup(enable: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::System::Registry::*;
+
+        let exe_path = std::env::current_exe()
+            .map_err(|e| e.to_string())?
+            .to_string_lossy()
+            .to_string();
+
+        unsafe {
+            let mut hkey = HKEY::default();
+            let result = RegOpenKeyExA(
+                HKEY_CURRENT_USER,
+                pcstr("Software\\Microsoft\\Windows\\CurrentVersion\\Run"),
+                Some(0),
+                KEY_SET_VALUE,
+                &mut hkey,
+            );
+            if result.is_err() {
+                return Err("Failed to open registry key".into());
+            }
+
+            if enable {
+                let value = format!("\"{}\"", exe_path);
+                let result = RegSetValueExA(
+                    hkey,
+                    pcstr("SpotlightWindows"),
+                    Some(0),
+                    REG_SZ,
+                    Some(value.as_bytes()),
+                );
+                let _ = RegCloseKey(hkey);
+                if result.is_ok() { Ok(()) } else { Err("Failed to set registry value".into()) }
+            } else {
+                let result = RegDeleteValueA(hkey, pcstr("SpotlightWindows"));
+                let _ = RegCloseKey(hkey);
+                if result.is_ok() { Ok(()) } else { Err("Failed to delete registry value".into()) }
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Startup not supported on this OS".into())
+    }
 }
 
 pub fn search_actions(query: &str) -> Vec<SearchResult> {
@@ -101,6 +192,11 @@ pub fn execute_action(action_id: &str) -> Result<String, String> {
         "volume_mute" => {
             run_hidden("powershell", &["-NoProfile", "-WindowStyle", "Hidden", "-Command", "$obj = New-Object -ComObject WScript.Shell; $obj.SendKeys([char]173)"]);
             Ok("Volume toggled".into())
+        }
+        "toggle_startup" => {
+            let enabled = !is_startup_enabled();
+            set_startup(enabled)?;
+            if enabled { Ok("Added to startup".into()) } else { Ok("Removed from startup".into()) }
         }
         _ => Ok("Unknown action".into()),
     }
