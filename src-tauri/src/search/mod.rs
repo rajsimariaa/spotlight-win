@@ -48,18 +48,28 @@ static CACHED_FILES: OnceLock<Vec<FileEntry>> = OnceLock::new();
 const FILE_EXTS: &[&str] = &[
     // Documents
     "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf", "odt", "csv", "md",
+    "epub", "mobi", "wps", "dif", "ods", "odp", "pages", "numbers", "key",
     // Images
     "jpg", "jpeg", "png", "gif", "bmp", "svg", "webp", "ico", "tiff", "raw",
+    "heic", "heif", "psd", "ai", "eps", "cr2", "nef", "arw", "dng",
     // Audio
-    "mp3", "wav", "flac", "aac", "ogg", "wma", "m4a",
+    "mp3", "wav", "flac", "aac", "ogg", "wma", "m4a", "opus", "aiff", "mid", "midi",
     // Video
-    "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v",
+    "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "ts", "vob", "3gp",
     // Code
-    "js", "ts", "tsx", "jsx", "py", "rs", "go", "java", "c", "cpp", "h", "cs", "html", "css", "json", "xml", "yaml", "yml", "toml",
+    "js", "ts", "tsx", "jsx", "py", "rs", "go", "java", "c", "cpp", "h", "cs",
+    "html", "css", "json", "xml", "yaml", "yml", "toml", "rb", "php", "swift",
+    "kt", "scala", "r", "lua", "pl", "sh", "bash", "ps1", "bat", "cmd", "vbs",
+    "vue", "svelte", "dart", "zig", "nim", "ex", "exs", "erl", "hs", "ml",
+    "sql", "graphql", "proto", "cmake", "makefile", "dockerfile",
+    // Config / build
+    "ini", "cfg", "conf", "env", "gitignore", "dockerignore", "editorconfig",
+    "prettierrc", "eslintrc", "babelrc", "tsconfig",
     // Archives
-    "zip", "rar", "7z", "tar", "gz",
+    "zip", "rar", "7z", "tar", "gz", "bz2", "xz", "zst", "lz4",
     // Other
-    "iso", "img", "dll", "ini", "cfg", "log",
+    "iso", "img", "dll", "log", "backup", "bak", "old", "tmp",
+    "pptx", "docm", "xlsm", "dotx",
 ];
 
 pub fn init_cache() {
@@ -74,23 +84,35 @@ fn build_file_cache() -> Vec<FileEntry> {
     let mut files = Vec::new();
     let mut seen = HashMap::new();
 
-    // 1. User profile directories
+    // 1. User profile directories — deeper scan (depth 7)
     if let Some(home) = dirs::home_dir() {
         let user_dirs = ["Documents", "Desktop", "Downloads", "Pictures", "Videos", "Music"];
         for d in user_dirs {
             let dir = home.join(d);
             if dir.exists() {
-                scan_files(&dir, &mut files, &mut seen, 0, 5);
+                scan_files(&dir, &mut files, &mut seen, 0, 7);
             }
         }
     }
 
-    // 2. All drives — scan root + 2 levels for files
+    // 2. Quick access locations
+    let quick_dirs = [
+        dirs::desktop_dir(),
+        dirs::document_dir(),
+        dirs::download_dir(),
+    ];
+    for dir in quick_dirs.into_iter().flatten() {
+        if dir.exists() {
+            scan_files(&dir, &mut files, &mut seen, 0, 6);
+        }
+    }
+
+    // 3. All drives — root + 3 levels
     for letter in b'A'..=b'Z' {
         let drive = format!("{}:\\", letter as char);
         let drive_path = std::path::Path::new(&drive);
         if drive_path.exists() {
-            scan_files(drive_path, &mut files, &mut seen, 0, 2);
+            scan_files(drive_path, &mut files, &mut seen, 0, 3);
         }
     }
 
@@ -101,6 +123,15 @@ fn is_file_ext(ext: &str) -> bool {
     FILE_EXTS.contains(&ext)
 }
 
+const FILE_SKIP_DIRS: &[&str] = &[
+    "$recycle.bin", "system volume information", "recovery", "perflogs",
+    "msocache", "appdata", ".git", "node_modules", "__pycache__",
+    ".vscode", "target", "dist", "build", ".cache", ".npm",
+    "windows", "program files", "program files (x86)", "programdata",
+    ".local", ".config", ".ssh", ".vscode-insiders", "snap",
+    "android", ".android", "intel", "nvidia", "amd",
+];
+
 fn scan_files(
     dir: &std::path::Path,
     files: &mut Vec<FileEntry>,
@@ -109,6 +140,10 @@ fn scan_files(
     max_depth: u32,
 ) {
     if depth > max_depth { return; }
+
+    // Speed limit: stop scanning large dirs
+    if files.len() > 100_000 { return; }
+
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -117,11 +152,7 @@ fn scan_files(
         let path = entry.path();
         if path.is_dir() {
             let name_lower = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
-            let skip = ["$recycle.bin", "system volume information", "recovery", "perflogs",
-                         "msocache", "appdata", ".git", "node_modules", "__pycache__",
-                         ".vscode", "target", "dist", "build", ".cache", ".npm",
-                         "windows", "program files", "program files (x86)"];
-            if !skip.contains(&name_lower.as_str()) {
+            if !FILE_SKIP_DIRS.contains(&name_lower.as_str()) && !name_lower.starts_with('.') {
                 scan_files(&path, files, seen, depth + 1, max_depth);
             }
         } else {
@@ -146,12 +177,19 @@ pub fn search_files(query: &str, files: &[FileEntry]) -> Vec<SearchResult> {
     let mut scored: Vec<(f64, &FileEntry)> = files.iter()
         .filter_map(|f| {
             let name_lower = f.name.to_lowercase();
-            let score = fuzzy::calculate_fuzzy_score(&query_lower, &name_lower);
+            // Score against filename
+            let name_score = fuzzy::calculate_fuzzy_score(&query_lower, &name_lower);
+
+            // Score against full path (lower priority)
+            let path_lower = f.path.to_lowercase();
+            let path_score = fuzzy::calculate_fuzzy_score(&query_lower, &path_lower) * 0.6;
+
+            let score = name_score.max(path_score);
             if score > 0.0 { Some((score, f)) } else { None }
         })
         .collect();
     scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-    scored.into_iter().take(10).map(|(score, f)| {
+    scored.into_iter().take(15).map(|(score, f)| {
         let ext = std::path::Path::new(&f.path)
             .extension()
             .and_then(|s| s.to_str())

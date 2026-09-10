@@ -32,6 +32,9 @@ pub fn apply_spotlight_styling(app: &tauri::AppHandle) -> Result<(), Box<dyn std
             let _ = DwmSetWindowAttribute(h, DWMWINDOWATTRIBUTE(20),
                 &dark as *const _ as *const c_void, std::mem::size_of::<u32>() as u32);
         }
+
+        // Position window near top-center of screen (~20% from top, like macOS Spotlight)
+        position_window_top_center(&window)?;
     }
 
     // PRD: WM_KILLFOCUS auto-hide via window focus event
@@ -47,8 +50,48 @@ pub fn apply_spotlight_styling(app: &tauri::AppHandle) -> Result<(), Box<dyn std
     Ok(())
 }
 
+fn position_window_top_center(window: &tauri::WebviewWindow) -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::ffi::c_void;
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN
+        };
+
+        let hwnd = HWND(window.hwnd()?.0 as *mut c_void);
+
+        unsafe {
+            let screen_w = GetSystemMetrics(SM_CXSCREEN) as f64;
+            let screen_h = GetSystemMetrics(SM_CYSCREEN) as f64;
+
+            // 20% from top for macOS-like positioning
+            let y_offset = (screen_h * 0.20) as i32;
+            let window_w = 750.0;
+            let x = ((screen_w - window_w) / 2.0) as i32;
+
+            use windows::Win32::UI::WindowsAndMessaging::SetWindowPos;
+            use windows::Win32::Foundation::RECT;
+
+            let _ = SetWindowPos(
+                hwnd,
+                None,
+                x,
+                y_offset,
+                0, 0,
+                windows::Win32::UI::WindowsAndMessaging::SWP_NOSIZE
+                    | windows::Win32::UI::WindowsAndMessaging::SWP_NOZORDER
+                    | windows::Win32::UI::WindowsAndMessaging::SWP_NOACTIVATE,
+            );
+        }
+    }
+    Ok(())
+}
+
 pub fn show_window(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(window) = app.get_webview_window("main") {
+        // Reposition to top-center every time it shows
+        position_window_top_center(&window)?;
         window.show()?;
         window.set_focus()?;
         app.emit("spotlight-show", ())?;
