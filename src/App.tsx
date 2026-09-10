@@ -96,7 +96,6 @@ export default function App() {
   const openWebSearch = useCallback((q: string) => {
     if (!q.trim()) return;
     invoke("execute_action", { actionId: `web:${q}` }).catch(() => {});
-    invoke("toggle_window").catch(() => {});
   }, []);
 
   const executeItem = useCallback((item: SearchResult, inDir = false) => {
@@ -109,7 +108,6 @@ export default function App() {
       id = `open:${item.path}`;
     }
     invoke("execute_action", { actionId: id }).catch(() => {});
-    invoke("toggle_window").catch(() => {});
   }, []);
 
   const onKey = useCallback((e: React.KeyboardEvent) => {

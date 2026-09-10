@@ -144,11 +144,6 @@ fn run_hidden(cmd: &str, args: &[&str]) {
 }
 
 pub fn execute_action(action_id: &str) -> Result<String, String> {
-    if let Some(path) = action_id.strip_prefix("open:") {
-        open::that(path).map_err(|e| e.to_string())?;
-        return Ok(format!("Opened: {}", path));
-    }
-
     let actions = get_all_actions();
     let action = actions.iter().find(|a| a.id == action_id)
         .ok_or_else(|| format!("Unknown action: {}", action_id))?;
