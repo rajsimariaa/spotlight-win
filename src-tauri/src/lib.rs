@@ -12,6 +12,13 @@ pub fn run() {
         search::init_cache();
     });
 
+    // Auto-enable startup on first run
+    std::thread::spawn(|| {
+        if !crate::search::quick_actions::is_startup_enabled() {
+            let _ = crate::search::quick_actions::set_startup(true);
+        }
+    });
+
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
