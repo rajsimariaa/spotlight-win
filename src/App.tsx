@@ -135,8 +135,8 @@ export default function App() {
         // Ctrl+Enter = open containing directory
         executeItem(results[selRef.current], e.ctrlKey);
       }
-    } else if (e.key === " " && !e.ctrlKey && !e.altKey && len > 0) {
-      // Spacebar = toggle Quick Look preview
+    } else if (e.key === "Tab" && len > 0) {
+      // Tab = toggle Quick Look preview
       e.preventDefault();
       setShowPreview(prev => !prev);
     } else if (e.key === "Escape") {
@@ -255,7 +255,7 @@ export default function App() {
             {selectedItem.metadata?.replace("file:", "").toUpperCase()} file
           </div>
           <div className="preview-hint">
-            Enter to open · Ctrl+Enter to open folder · Space to close preview
+            Enter to open · Ctrl+Enter to open folder · Tab to toggle preview
           </div>
         </div>
       )}
